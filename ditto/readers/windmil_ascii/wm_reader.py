@@ -49,7 +49,7 @@ class wm2graph:
         except:
             raise ValueError('Folder path "{}" does not exist '.format(project_folder))
 
-        no_header = ['Map Points', 'Archieved Load', 'Billing Load Data', 'Equipment Data', 'Circuit Elements']
+        no_header = ['Map Points', 'Archieved Load', 'Equipment Data', 'Circuit Elements']
         skip_line = ['Circuit Elements', 'Equipment Data']
         for table_name, table_path in self.files.items():
             logging.info('Reading table: .{}'.format(table_path))
@@ -67,6 +67,8 @@ class wm2graph:
                 logging.warning('File at ".{}" was not read correctly.'.format(table_path))
         self.tables['Equipment Data Headings'] = pd.DataFrame(std_file_headings)
         self.tables['Equipment Lib Headings'] = pd.DataFrame(seq_file_headings)
+        self.tables['Equipment Data'].to_csv(r"C:\Users\SABRAHAM\Desktop\NREL\current_projects\Risk-Informed-Control\windmil_conversion\equipment_data.csv")
+        self.tables['Circuit Elements'].to_csv(r"C:\Users\SABRAHAM\Desktop\NREL\current_projects\Risk-Informed-Control\windmil_conversion\circuit_data.csv")
         self.create_graph()
 
     def create_graph(self):
@@ -124,7 +126,7 @@ class wm2graph:
     def iterate_nodes(self, Node1, Node2, Ppty):
         self.EdgePath.append([Node1, Node2])
         if Ppty not in self.nxGraph[Node1][Node2]:
-            inEdge = self.nxGraph.in_edges([Node1])
+            inEdge = list(self.nxGraph.in_edges([Node1]))  # nx > v2.4, this is not subscriptable
             if inEdge:
                 inEdgeNodes = list(inEdge[0])
                 return self.iterate_nodes(inEdgeNodes[0], inEdgeNodes[1], Ppty)
@@ -165,8 +167,8 @@ class wm2graph:
         Ys=[]
         for edge in relevant_edges:
             node1, node2 = edge
-            x = self.nxGraph.node[node2]['x']
-            y = self.nxGraph.node[node2]['y']
+            x = self.nxGraph.nodes[node2]['x']
+            y = self.nxGraph.nodes[node2]['y']
             if None not in [x, y]:
                 Xs.append(x)
                 Ys.append(y)
@@ -186,21 +188,21 @@ class wm2graph:
             }
             for edge in edges:
                 node1, node2 = edge
-                if 'x' in self.nxGraph.node[node1] and 'x' in self.nxGraph.node[node2]:
-                    x1 = self.nxGraph.node[node1]['x']
-                    y1 = self.nxGraph.node[node1]['y']
-                    x2 = self.nxGraph.node[node2]['x']
-                    y2 = self.nxGraph.node[node2]['y']
+                if 'x' in self.nxGraph.nodes[node1] and 'x' in self.nxGraph.nodes[node2]:
+                    x1 = self.nxGraph.nodes[node1]['x']
+                    y1 = self.nxGraph.nodes[node1]['y']
+                    x2 = self.nxGraph.nodes[node2]['x']
+                    y2 = self.nxGraph.nodes[node2]['y']
                     if None not in [x1, x2, y1, y2]:
                         self.plotdata['Xs'].append([x1, x2])
                         self.plotdata['Ys'].append([y1, y2])
 
                 for node in [node1, node2]:
-                    if 'loads' in self.nxGraph.node[node]:
-                        for load_name, load_properties in self.nxGraph.node[node]['loads'].items():
-                            if 'x' in self.nxGraph.node[node] and self.nxGraph.node[node]:
-                                x1 = self.nxGraph.node[node]['x']
-                                y1 = self.nxGraph.node[node]['y']
+                    if 'loads' in self.nxGraph.nodes[node]:
+                        for load_name, load_properties in self.nxGraph.nodes[node]['loads'].items():
+                            if 'x' in self.nxGraph.nodes[node] and self.nxGraph.nodes[node]:
+                                x1 = self.nxGraph.nodes[node]['x']
+                                y1 = self.nxGraph.nodes[node]['y']
                                 x2 = load_properties['x']
                                 y2 = load_properties['y']
                                 dist = np.sqrt((x1 - x2)**2 + (y1 - y2)**2)
@@ -235,7 +237,7 @@ class wm2graph:
 
     def get_graph_metrics(self):
         nxGraph = self.nxGraph.to_undirected()
-        islands = list(nx.connected_component_subgraphs(nxGraph))
+        islands = list(nxGraph.subgraph(c) for c in nx.connected_components(nxGraph))
         print('Number of islands: ', len(islands))
         loops = nx.cycle_basis(nxGraph)
         print('Number of loops: ', len(loops))
@@ -252,9 +254,9 @@ class wm2graph:
             from_node = 'node_' + self.fix_string(generator['Parent Element Name'])
             #to_node = 'node_' + self.fix_string(load['Element Name'])
             if from_node in self.nxGraph.nodes():
-                if 'capacitors' not in self.nxGraph.node[from_node]:
-                    self.nxGraph.node[from_node]['capacitors'] = {}
-                self.nxGraph.node[from_node]['capacitors'][self.fix_string(generator['Element Name'])] = {
+                if 'capacitors' not in self.nxGraph.nodes[from_node]:
+                    self.nxGraph.nodes[from_node]['capacitors'] = {}
+                self.nxGraph.nodes[from_node]['capacitors'][self.fix_string(generator['Element Name'])] = {
                     'name'          : self.fix_string(generator['Element Name']),
                     'x'             : generator['X Coordinate'],
                     'y'             : generator['Y Coordinate'],
@@ -290,14 +292,15 @@ class wm2graph:
         capacitors = self.library['Capacitor']
         capacitors.index = range(len(capacitors))
         capacitors.columns = list(Headings)
+        capacitors = capacitors.replace({"Phase Configuration": phaseconfig_to_name})
         for r, capacitor in capacitors.iterrows():
-            print(capacitor)
+            # print(capacitor)
             from_node = 'node_' + self.fix_string(capacitor['Parent Element Name'])
             #to_node = 'node_' + self.fix_string(load['Element Name'])
             if from_node in self.nxGraph.nodes():
-                if 'capacitors' not in self.nxGraph.node[from_node]:
-                    self.nxGraph.node[from_node]['capacitors'] = {}
-                self.nxGraph.node[from_node]['capacitors'][self.fix_string(capacitor['Element Name'])] = {
+                if 'capacitors' not in self.nxGraph.nodes[from_node]:
+                    self.nxGraph.nodes[from_node]['capacitors'] = {}
+                self.nxGraph.nodes[from_node]['capacitors'][self.fix_string(capacitor['Element Name'])] = {
                     'name'          : self.fix_string(capacitor['Element Name']),
                     'phases'        :capacitor['Phase Configuration'],
                     'x'             : capacitor['X Coordinate'],
@@ -311,7 +314,7 @@ class wm2graph:
                                        capacitor['kvar, Phase B'],
                                        capacitor['kvar, Phase C']],
                     'Ctrl Element'  : capacitor['Control Element'],
-                    'conn'          : capacitor_conn[capacitor['Connection']],
+                    'conn'          : capacitor_conn[int(capacitor['Connection'])],
                     'kvarRated'     : capacitor['Unit Size kvar'],
                     'control phase' : capacitor['Control Phase'],
                     'failure rate'  : capacitor['Failure Rate'],
@@ -325,13 +328,14 @@ class wm2graph:
         service_locations = self.library['Consumer']
         service_locations.index = range(len(service_locations))
         service_locations.columns = list(Headings)
+        service_locations = service_locations.replace({"Phase Configuration": phaseconfig_to_name})
         for r, load in service_locations.iterrows():
             from_node = 'node_' + self.fix_string(load['Parent Element Name'])
             to_node = 'node_' + self.fix_string(load['Element Name'])
             if from_node in self.nxGraph.nodes():
-                if 'loads' not in self.nxGraph.node[from_node]:
-                    self.nxGraph.node[from_node]['loads'] = {}
-                self.nxGraph.node[from_node]['loads'][self.fix_string(load['Element Name'])] = {
+                if 'loads' not in self.nxGraph.nodes[from_node]:  # needed for nx 2.4
+                    self.nxGraph.nodes[from_node]['loads'] = {}
+                self.nxGraph.nodes[from_node]['loads'][self.fix_string(load['Element Name'])] = {
                     'name'          : self.fix_string(load['Element Name']),
                     'type'          : customer_types[load['Consumer Type']],
                     'phases'        : load['Phase Configuration'],
@@ -362,6 +366,7 @@ class wm2graph:
         nodes = self.library['Node']
         nodes.index = range(len(nodes))
         nodes.columns = list(Headings)
+        nodes = nodes.replace({"Phase Configuration": phaseconfig_to_name})
         for r, node in nodes.iterrows():
             from_node = 'node_' + self.fix_string(node['Parent Element Name'])
             to_node = 'node_' + self.fix_string(node['Element Name'])
@@ -396,17 +401,18 @@ class wm2graph:
                 'feeder'       : node['Feeder Name'],
                 'mGID'         : node['mGUID'],
             }
-            self.nxGraph.add_edge(from_node, to_node, reg_dict)
-            self.nxGraph.node[to_node] = {
+            self.nxGraph.add_edge(from_node, to_node, **reg_dict)
+            self.nxGraph.nodes[to_node].update({
                 'x': node['X Coordinate'],
                 'y': node['Y Coordinate'],
-            }
+            })
 
     def create_substation(self):
         Headings = self.tables['Equipment Data Headings']['Source']
         substations = self.library['Source']
         substations.index = range(len(substations))
         substations.columns = list(Headings)
+        substations = substations.replace({"Phase Configuration": phaseconfig_to_name})
         for r, substation in substations.iterrows():
             from_node = 'node_' + self.fix_string(substation['Parent Element Name'])
             to_node = 'node_' + self.fix_string(substation['Element Name'])
@@ -432,11 +438,11 @@ class wm2graph:
                 'mGID'         : substation['mGUID'],
             }
             self.nxGraph.graph['kvBase'] = reg_dict['kv']
-            self.nxGraph.add_edge(from_node, to_node, reg_dict)
-            self.nxGraph.node[to_node] = {
+            self.nxGraph.add_edge(from_node, to_node, **reg_dict)
+            self.nxGraph.nodes[to_node].update({
                 'x': substation['X Coordinate'],
                 'y': substation['Y Coordinate'],
-            }
+            })
 
         return
 
@@ -445,6 +451,7 @@ class wm2graph:
         regs = self.library['Regulator']
         regs.index = range(len(regs))
         regs.columns = list(Headings)
+        regs = regs.replace({"Phase Configuration": phaseconfig_to_name})
         for r, reg in regs.iterrows():
             from_node = 'node_' + self.fix_string(reg['Parent Element Name'])
             to_node = 'node_' + self.fix_string(reg['Element Name'])
@@ -485,17 +492,18 @@ class wm2graph:
                 'mGID'         : reg['mGUID'],
             }
 
-            self.nxGraph.add_edge(from_node, to_node, reg_dict)
-            self.nxGraph.node[to_node] = {
+            self.nxGraph.add_edge(from_node, to_node, **reg_dict)
+            self.nxGraph.nodes[to_node].update({
                 'x': reg['X Coordinate'],
                 'y': reg['Y Coordinate'],
-            }
+            })
 
     def create_transformers(self):
         Headings = self.tables['Equipment Data Headings']['Transformer']
         xfmrs = self.library['Transformer']
         xfmrs.index = range(len(xfmrs))
         xfmrs.columns = list(Headings)
+        xfmrs = xfmrs.replace({"Phase Configuration": phaseconfig_to_name})
         for r, xfmr in xfmrs.iterrows():
             from_node = 'node_' + self.fix_string(xfmr['Parent Element Name'])
             to_node = 'node_' + self.fix_string(xfmr['Element Name'])
@@ -529,18 +537,19 @@ class wm2graph:
                 'feeder'           : xfmr['Feeder Name'],
                 'mGID'             : xfmr['mGUID'],
             }
-            self.nxGraph.add_edge(from_node, to_node, fuse_dict)
+            self.nxGraph.add_edge(from_node, to_node, **fuse_dict)
 
-            self.nxGraph.node[to_node] = {
+            self.nxGraph.nodes[to_node].update({
                 'x': xfmr['X Coordinate'],
                 'y': xfmr['Y Coordinate'],
-            }
+            })
 
     def create_devices(self):
         Headings = self.tables['Equipment Data Headings']['Overcurrent Device']
         fuses = self.library['Overcurrent Device']
         fuses.index = range(len(fuses))
         fuses.columns = list(Headings)
+        fuses = fuses.replace({"Phase Configuration": phaseconfig_to_name})
         for r, fuse in fuses.iterrows():
             from_node = 'node_' + self.fix_string(fuse['Parent Element Name'])
             to_node = 'node_' + self.fix_string(fuse['Element Name'])
@@ -570,17 +579,18 @@ class wm2graph:
                 'feeder'       : fuse['Feeder Name'],
                 'mGID'         : fuse['mGUID'],
             }
-            self.nxGraph.add_edge(from_node, to_node, fuse_dict)
-            self.nxGraph.node[to_node] = {
+            self.nxGraph.add_edge(from_node, to_node, **fuse_dict)
+            self.nxGraph.nodes[to_node].update({
                 'x': fuse['X Coordinate'],
                 'y': fuse['Y Coordinate'],
-            }
+            })  # G.nodes used after nx version2.4
 
     def create_switches(self):
         Headings = self.tables['Equipment Data Headings']['Switch']
         switches = self.library['Switch']
         switches.index = range(len(switches))
         switches.columns = list(Headings)
+        switches = switches.replace({"Phase Configuration": phaseconfig_to_name})
         for r, switch in switches.iterrows():
             from_node = 'node_' + self.fix_string(switch['Parent Element Name'])
             to_node = 'node_' + self.fix_string(switch['Element Name'])
@@ -603,11 +613,11 @@ class wm2graph:
                 'feeder'       : switch['Feeder Name'],
                 'mGID'         : switch['mGUID'],
             }
-            self.nxGraph.add_edge(from_node, to_node, switch_dict)
-            self.nxGraph.node[to_node] = {
+            self.nxGraph.add_edge(from_node, to_node, **switch_dict)
+            self.nxGraph.nodes[to_node].update({
                 'x': switch['X Coordinate'],
                 'y': switch['Y Coordinate'],
-            }
+            })
 
     def create_lines(self):
         Headings = self.tables['Equipment Data Headings']['Line']
@@ -615,6 +625,7 @@ class wm2graph:
         for line_id, line_database in enumerate(line_tables):
             line_database.index = range(len(line_database))
             line_database.columns = list(Headings)
+            line_database = line_database.replace({"Phase Configuration": phaseconfig_to_name})
             if line_id == 0:
                 line_type = 'overhead'
             else:
@@ -643,12 +654,12 @@ class wm2graph:
                     'mGID'        : line['mGUID'],
 
                 }
-
-                self.nxGraph.add_edge(from_node, to_node, line_properties)
-                self.nxGraph.node[to_node] = {
+                
+                self.nxGraph.add_edge(from_node, to_node, **line_properties)
+                self.nxGraph.nodes[to_node].update({
                     'x': line['X Coordinate'],
                     'y': line['Y Coordinate'],
-                }
+                })
 
     def fix_string(self, String):
         BannedChrs = [' ', '.', '{', '}']

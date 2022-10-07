@@ -26,7 +26,15 @@ load_mix = {
     4   :	'Named Equipment Category',
 }
 
-
+phaseconfig_to_name = {
+    1   :    "A",
+    2   :    "B", 
+    3   :    "C",
+    4   :    "AB",
+    5   :    "AC",
+    6   :    "BC",
+    7   :    "ABC"
+}
 
 conductor_material = {
     1	:	'Anaconda',
@@ -41,6 +49,19 @@ conductor_material = {
     10	:	'HHHC',
     11	:	'Steel',
     12	:	'User-Defined',
+}
+
+phase_types = {
+    1	:	'Small_Commercial',
+    2	:	'Large_Commercial',
+    3   :	'Large_Power',
+    4   :	'Motor_Load',
+    5	:	'Irrigation',
+    6	:	'Oil_and_Gas',
+    7	:	'Traffic_Lights',
+    8	:	'Security_and_Street_Lights',
+    9	:	'Flat_Rate_Load',
+    10  :	'Primary',
 }
 
 xfmr_mounting = {
